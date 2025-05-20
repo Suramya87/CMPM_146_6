@@ -32,12 +32,19 @@ class TreeNode:
     # Called after all iterations are done; should return the 
     # best action from among state.get_actions()
     def get_best(self, state):
-        return random.choice(state.get_actions())
+            return max(self.children.items(), key=lambda item: sum(item[1].results) / len(item[1].results) if item[1].results else 0)[0] \
+                if self.children else random.choice(state.get_actions())
+
         
     # REQUIRED function (implementation optional, but *very* helpful for debugging)
     # Called after all iterations when the -v command line parameter is present
-    def print_tree(self, indent = 0):
-        pass
+    def print_tree(self, indent=0):
+            print(" " * indent + f"Node (Wins: {sum(self.results)}, Visits: {len(self.results)})")
+            for action, child in self.children.items():
+                print(" " * (indent + 2) + f"Action: {action}")
+                child.print_tree(indent + 4)
+
+
 
 
     # RECOMMENDED: select gets all actions available in the state it is passed
@@ -46,25 +53,58 @@ class TreeNode:
     # Otherwise, pick a child node according to your selection criterion (e.g. UCB-1)
     # apply its action to the state and recursively call select on that child node.
     def select(self, state):
-        pass
+            available_actions = state.get_actions()
+
+            if len(self.children) < len(available_actions):
+                self.expand(state, available_actions)
+            else:
+                best_action = max(self.children.items(),
+                                  key=lambda item: sum(item[1].results) / len(item[1].results) + 
+                                  self.param * math.sqrt(math.log(len(self.results)) / (1 + len(item[1].results))))[0]
+                state.apply_action(best_action)
+                self.children[best_action].select(state)
+
+
 
     # RECOMMENDED: expand takes the available actions, and picks one at random,
     # adds a child node corresponding to that action, applies the action ot the state
     # and then calls rollout on that new node
     def expand(self, state, available):
-        pass 
+        action = random.choice(available)
+        key = str(action)
+        action_obj = action.to_action(state)
+
+        # Avoid crashing on EndAgentTurn
+        if isinstance(action_obj, PlayCard):
+            action_obj.apply()
+
+        child = TreeNode(self.param, parent=self)
+        child.action_taken = action
+        self.children[key] = child
+        child.rollout(state)
+
 
     # RECOMMENDED: rollout plays the game randomly until its conclusion, and then 
     # calls backpropagate with the result you get 
     def rollout(self, state):
-        pass
+        while state.get_actions():  # keep going while there are actions
+            action = random.choice(state.get_actions())
+            action_obj = action.to_action(state)
+            action_obj.apply()
+        result = self.score(state)
+        self.backpropagate(result)
+
+
         
     # RECOMMENDED: backpropagate records the score you got in the current node, and 
     # then recursively calls the parent's backpropagate as well.
     # If you record scores in a list, you can use sum(self.results)/len(self.results)
     # to get an average.
     def backpropagate(self, result):
-        pass
+        self.results.append(result)
+        if self.parent:
+            self.parent.backpropagate(result)
+
         
     # RECOMMENDED: You can start by just using state.score() as the actual value you are 
     # optimizing; for the challenge scenario, in particular, you may want to experiment

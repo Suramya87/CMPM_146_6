@@ -17,34 +17,57 @@ class TreeNode:
     # You can change this to include other attributes. 
     # param is the value passed via the -p command line option (default: 0.5)
     # You can use this for e.g. the "c" value in the UCB-1 formula
-    def __init__(self, param, parent=None):
-        self.children = {}
+    def __init__(self, param, parent=None, action=None):
+        self.param = param  # Unused in the simple version
         self.parent = parent
+        self.action = action  # Action that led to this node
+        self.children = {}  # action.key() -> TreeNode
         self.results = []
-        self.param = param
+        self.visits = 0
     
     # REQUIRED function
     # Called once per iteration
     def step(self, state):
-        self.select(state)
+        actions = state.get_actions()
+        if not actions:
+            return  # No actions available — stop
+
+        unexplored = [a for a in actions if a.key() not in self.children]
+        if unexplored:
+            self.expand(state, unexplored)
+        else:
+            action = random.choice(actions)
+            state.step(action)
+            child = self.children.get(action.key())
+            if child:
+                child.step(state)
         
     # REQUIRED function
     # Called after all iterations are done; should return the 
     # best action from among state.get_actions()
     def get_best(self, state):
-            return max(self.children.items(), key=lambda item: sum(item[1].results) / len(item[1].results) if item[1].results else 0)[0] \
-                if self.children else random.choice(state.get_actions())
-
+        if not self.children:
+            actions = state.get_actions()
+            return random.choice(actions) if actions else None
+        best = None
+        best_avg = -float("inf")
+        for child in self.children.values():
+            if child.visits > 0:
+                avg = sum(child.results) / child.visits
+                if avg > best_avg:
+                    best_avg = avg
+                    best = child
+        return best.action if best else None
         
     # REQUIRED function (implementation optional, but *very* helpful for debugging)
     # Called after all iterations when the -v command line parameter is present
     def print_tree(self, indent=0):
-            print(" " * indent + f"Node (Wins: {sum(self.results)}, Visits: {len(self.results)})")
-            for action, child in self.children.items():
-                print(" " * (indent + 2) + f"Action: {action}")
-                child.print_tree(indent + 4)
-
-
+        prefix = "  " * indent
+        avg = sum(self.results) / self.visits if self.visits > 0 else 0
+        name = self.action.key() if self.action else "ROOT"
+        print(f"{prefix}{name} - visits: {self.visits}, avg: {avg:.2f}")
+        for child in self.children.values():
+            child.print_tree(indent + 1)
 
 
     # RECOMMENDED: select gets all actions available in the state it is passed
@@ -53,58 +76,49 @@ class TreeNode:
     # Otherwise, pick a child node according to your selection criterion (e.g. UCB-1)
     # apply its action to the state and recursively call select on that child node.
     def select(self, state):
-            available_actions = state.get_actions()
-
-            if len(self.children) < len(available_actions):
-                self.expand(state, available_actions)
-            else:
-                best_action = max(self.children.items(),
-                                  key=lambda item: sum(item[1].results) / len(item[1].results) + 
-                                  self.param * math.sqrt(math.log(len(self.results)) / (1 + len(item[1].results))))[0]
-                state.apply_action(best_action)
-                self.children[best_action].select(state)
-
-
+        available_actions = state.get_actions()
+        
+        # If not all actions have been explored, expand
+        if len(self.children) < len(available_actions):
+            self.expand(state, available_actions)
+        else:
+            # Choose action using UCB-1 formula
+            best_action = max(self.children.items(),
+                              key=lambda item: (sum(item[1].results) / len(item[1].results) if item[1].results else 0) +
+                              self.param * math.sqrt(math.log(len(self.results) + 1) / (1 + len(item[1].results))))[0]
+            
+            state.apply_action(best_action)
+            self.children[best_action].select(state)
 
     # RECOMMENDED: expand takes the available actions, and picks one at random,
     # adds a child node corresponding to that action, applies the action ot the state
     # and then calls rollout on that new node
-    def expand(self, state, available):
-        action = random.choice(available)
-        key = str(action)
-        action_obj = action.to_action(state)
-
-        # Avoid crashing on EndAgentTurn
-        if isinstance(action_obj, PlayCard):
-            action_obj.apply()
-
-        child = TreeNode(self.param, parent=self)
-        child.action_taken = action
-        self.children[key] = child
+    def expand(self, state, unexplored):
+        action = random.choice(unexplored)
+        state.step(action)
+        child = TreeNode(self.param, parent=self, action=action)
+        self.children[action.key()] = child
         child.rollout(state)
-
 
     # RECOMMENDED: rollout plays the game randomly until its conclusion, and then 
     # calls backpropagate with the result you get 
     def rollout(self, state):
-        while state.get_actions():  # keep going while there are actions
-            action = random.choice(state.get_actions())
-            action_obj = action.to_action(state)
-            action_obj.apply()
-        result = self.score(state)
-        self.backpropagate(result)
-
-
-        
+        while not state.ended():
+            actions = state.get_actions()
+            if not actions:
+                break
+            action = random.choice(actions)
+            state.step(action)
+        self.backpropagate(state.score())
     # RECOMMENDED: backpropagate records the score you got in the current node, and 
     # then recursively calls the parent's backpropagate as well.
     # If you record scores in a list, you can use sum(self.results)/len(self.results)
     # to get an average.
     def backpropagate(self, result):
+        self.visits += 1
         self.results.append(result)
         if self.parent:
             self.parent.backpropagate(result)
-
         
     # RECOMMENDED: You can start by just using state.score() as the actual value you are 
     # optimizing; for the challenge scenario, in particular, you may want to experiment

@@ -18,10 +18,10 @@ class TreeNode:
     # param is the value passed via the -p command line option (default: 0.5)
     # You can use this for e.g. the "c" value in the UCB-1 formula
     def __init__(self, param, parent=None, action=None):
-        self.param = param  # Unused in the simple version
+        self.param = param
         self.parent = parent
-        self.action = action  # Action that led to this node
-        self.children = {}  # action.key() -> TreeNode
+        self.action = action  
+        self.children = {}  
         self.results = []
         self.visits = 0
     
@@ -30,7 +30,7 @@ class TreeNode:
     def step(self, state):
         actions = state.get_actions()
         if not actions:
-            return  # No actions available — stop
+            return  
 
         unexplored = [a for a in actions if a.key() not in self.children]
         if unexplored:
@@ -77,12 +77,9 @@ class TreeNode:
     # apply its action to the state and recursively call select on that child node.
     def select(self, state):
         available_actions = state.get_actions()
-        
-        # If not all actions have been explored, expand
         if len(self.children) < len(available_actions):
             self.expand(state, available_actions)
         else:
-            # Choose action using UCB-1 formula
             best_action = max(self.children.items(),
                               key=lambda item: (sum(item[1].results) / len(item[1].results) if item[1].results else 0) +
                               self.param * math.sqrt(math.log(len(self.results) + 1) / (1 + len(item[1].results))))[0]
